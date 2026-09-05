@@ -12,6 +12,8 @@ server.use(cors())
 server.use(cookieParser())
 server.use(logger('dev'))
 
+
+
 server.use('/api/golpe-de-la-suerte', rootRouter)
 
 export default server
