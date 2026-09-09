@@ -78,6 +78,7 @@ server.listen(envsConfig.PORT, () => {
       )
     })
     .catch((err) => {
+      
       console.log(`Error al sincronizar la base de datos: ${err.message}`)
     })
 })
