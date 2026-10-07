@@ -173,7 +173,25 @@ const listarPorPunto = async (puntoVentaId, params = {}) => {
   const limit = parseInt(params.limit, 10) || 10
   const offset = (page - 1) * limit
 
-  const whereSorteo = {}
+  // 1. PRIMERO: Obtenemos de forma ligera los SorteoId únicos en los que este punto de venta ha vendido tickets.
+  // Esto evita hacer un JOIN pesado en la tabla principal de Sorteos al paginar.
+  const ticketsDelPunto = await Tickets.findAll({
+    attributes: [[sq.fn('DISTINCT', sq.col('SorteoId')), 'SorteoId']],
+    where: { PuntoVentaId: puntoVentaId },
+    raw: true,
+  })
+
+  const sorteoIdsPermitidos = ticketsDelPunto.map(t => t.SorteoId)
+
+  // Si el punto de venta no tiene ningún ticket vendido, retornamos vacío de una vez
+  if (sorteoIdsPermitidos.length === 0) {
+    return { code: 200, sorteos: [], totalItems: 0, totalPages: 0, currentPage: page }
+  }
+
+  // 2. Construimos los filtros normales del sorteo
+  const whereSorteo = {
+    id: sorteoIdsPermitidos, // Limitamos solo a los sorteos donde este punto participó
+  }
 
   if (params.CatalogoId && params.CatalogoId !== 'Todos') {
     whereSorteo.CatalogoId = params.CatalogoId
@@ -198,34 +216,26 @@ const listarPorPunto = async (puntoVentaId, params = {}) => {
     }
   }
 
-  // Obtenemos los sorteos y hacemos los cálculos directamente mediante atributos virtuales o subconsultas / includes agrupados
+  // 3. SEGUNDO: Hacemos el findAndCountAll limpio sobre Sorteos SIN hacer JOINs pesados en la paginación
   const { count, rows } = await Sorteos.findAndCountAll({
     where: whereSorteo,
     include: [
-      {
-        model: Tickets,
-        where: { PuntoVentaId: puntoVentaId },
-        attributes: [],
-        required: true,
-      },
       Catalogos,
       Cifras,
     ],
-    distinct: true,
     limit,
     offset,
     order: [['createdAt', 'DESC']],
+    distinct: true,
   })
 
-  // En lugar de un bucle con consultas individuales, podemos obtener las estadísticas 
-  // de todos los sorteos de esta página en una sola consulta masiva usando IN:
-  const sorteoIds = rows.map(s => s.id)
+  const sorteoIdsPagina = rows.map(s => s.id)
 
-  if (sorteoIds.length === 0) {
-    return { code: 200, sorteos: [], totalItems: 0, totalPages: 0, currentPage: page }
+  if (sorteoIdsPagina.length === 0) {
+    return { code: 200, sorteos: [], totalItems: count, totalPages: Math.ceil(count / limit), currentPage: page }
   }
 
-  // 1. Obtener recaudación agrupada por SorteoId para este punto
+  // 4. TERCERO: Consultamos las estadísticas solo para los IDs de la página actual (rápido y directo)
   const statsRecaudadoList = await DetallesTicket.findAll({
     attributes: [
       [sq.col('Ticket.SorteoId'), 'SorteoId'],
@@ -234,25 +244,23 @@ const listarPorPunto = async (puntoVentaId, params = {}) => {
     include: [{
       model: Tickets,
       attributes: [],
-      where: { SorteoId: sorteoIds, PuntoVentaId: puntoVentaId }
+      where: { SorteoId: sorteoIdsPagina, PuntoVentaId: puntoVentaId }
     }],
     group: [sq.col('Ticket.SorteoId')],
     raw: true
   })
 
-  // 2. Obtener premios y conteo de tickets agrupados por SorteoId para este punto
   const statsTicketsList = await Tickets.findAll({
     attributes: [
       'SorteoId',
       [sq.fn('SUM', sq.col('montoTotalPremio')), 'totalPremios'],
       [sq.fn('COUNT', sq.col('id')), 'totalTickets']
     ],
-    where: { SorteoId: sorteoIds, PuntoVentaId: puntoVentaId },
+    where: { SorteoId: sorteoIdsPagina, PuntoVentaId: puntoVentaId },
     group: ['SorteoId'],
     raw: true
   })
 
-  // Creamos mapas de acceso rápido
   const recaudadoMap = Object.fromEntries(statsRecaudadoList.map(item => [item.SorteoId, parseFloat(item.total || 0)]))
   const ticketsMap = Object.fromEntries(statsTicketsList.map(item => [item.SorteoId, {
     premios: parseFloat(item.totalPremios || 0),
@@ -282,7 +290,6 @@ const listarPorPunto = async (puntoVentaId, params = {}) => {
     currentPage: page,
   }
 }
-
 
 const listarAbiertos = async (params = {}) => {
   const p = params || {}
