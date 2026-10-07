@@ -40,7 +40,7 @@ const listarTodos = async (params = {}) => {
   })
 
   const totalPages = Math.ceil(count / limit)
-
+  console.log(sorteos)
   return {
     code: 200,
     sorteos,
