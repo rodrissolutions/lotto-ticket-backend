@@ -50,7 +50,7 @@ const listarTodos = async (params = {}) => {
   }
 }
 
-const listarPorPunto = async (puntoVentaId, params = {}) => {
+const listarPorPuntoOld = async (puntoVentaId, params = {}) => {
   const page = parseInt(params.page, 10) || 1
   const limit = parseInt(params.limit, 10) || 10
   const offset = (page - 1) * limit
@@ -165,6 +165,121 @@ const listarParaVenderTickets = async () => {
   return {
     code: 200,
     sorteos
+  }
+}
+
+const listarPorPunto = async (puntoVentaId, params = {}) => {
+  const page = parseInt(params.page, 10) || 1
+  const limit = parseInt(params.limit, 10) || 10
+  const offset = (page - 1) * limit
+
+  const whereSorteo = {}
+
+  if (params.CatalogoId && params.CatalogoId !== 'Todos') {
+    whereSorteo.CatalogoId = params.CatalogoId
+  }
+  if (params.jornada && params.jornada !== 'Todos') {
+    whereSorteo.jornada = params.jornada
+  }
+  if (params.CifraId && params.CifraId !== 'Todos') {
+    whereSorteo.CifraId = params.CifraId
+  }
+  if (params.estado && params.estado !== 'Todos') {
+    whereSorteo.estado = params.estado
+  }
+
+  if (params.fechaDesde || params.fechaHasta) {
+    if (params.fechaDesde && params.fechaHasta) {
+      whereSorteo.fechaSorteo = { [Op.between]: [params.fechaDesde, params.fechaHasta] }
+    } else if (params.fechaDesde) {
+      whereSorteo.fechaSorteo = { [Op.gte]: params.fechaDesde }
+    } else if (params.fechaHasta) {
+      whereSorteo.fechaSorteo = { [Op.lte]: params.fechaHasta }
+    }
+  }
+
+  // Obtenemos los sorteos y hacemos los cálculos directamente mediante atributos virtuales o subconsultas / includes agrupados
+  const { count, rows } = await Sorteos.findAndCountAll({
+    where: whereSorteo,
+    include: [
+      {
+        model: Tickets,
+        where: { PuntoVentaId: puntoVentaId },
+        attributes: [],
+        required: true,
+      },
+      Catalogos,
+      Cifras,
+    ],
+    distinct: true,
+    limit,
+    offset,
+    order: [['createdAt', 'DESC']],
+  })
+
+  // En lugar de un bucle con consultas individuales, podemos obtener las estadísticas 
+  // de todos los sorteos de esta página en una sola consulta masiva usando IN:
+  const sorteoIds = rows.map(s => s.id)
+
+  if (sorteoIds.length === 0) {
+    return { code: 200, sorteos: [], totalItems: 0, totalPages: 0, currentPage: page }
+  }
+
+  // 1. Obtener recaudación agrupada por SorteoId para este punto
+  const statsRecaudadoList = await DetallesTicket.findAll({
+    attributes: [
+      [sq.col('Ticket.SorteoId'), 'SorteoId'],
+      [sq.fn('SUM', sq.col('montoApostado')), 'total']
+    ],
+    include: [{
+      model: Tickets,
+      attributes: [],
+      where: { SorteoId: sorteoIds, PuntoVentaId: puntoVentaId }
+    }],
+    group: [sq.col('Ticket.SorteoId')],
+    raw: true
+  })
+
+  // 2. Obtener premios y conteo de tickets agrupados por SorteoId para este punto
+  const statsTicketsList = await Tickets.findAll({
+    attributes: [
+      'SorteoId',
+      [sq.fn('SUM', sq.col('montoTotalPremio')), 'totalPremios'],
+      [sq.fn('COUNT', sq.col('id')), 'totalTickets']
+    ],
+    where: { SorteoId: sorteoIds, PuntoVentaId: puntoVentaId },
+    group: ['SorteoId'],
+    raw: true
+  })
+
+  // Creamos mapas de acceso rápido
+  const recaudadoMap = Object.fromEntries(statsRecaudadoList.map(item => [item.SorteoId, parseFloat(item.total || 0)]))
+  const ticketsMap = Object.fromEntries(statsTicketsList.map(item => [item.SorteoId, {
+    premios: parseFloat(item.totalPremios || 0),
+    count: parseInt(item.totalTickets || 0)
+  }]))
+
+  const sorteosData = rows.map((sorteo) => {
+    const json = sorteo.get({ plain: true })
+    const recaudado = recaudadoMap[sorteo.id] || 0
+    const premios = ticketsMap[sorteo.id]?.premios || 0
+    const totalTickets = ticketsMap[sorteo.id]?.count || 0
+
+    return {
+      ...json,
+      totalRecaudado: recaudado.toFixed(2),
+      totalPremios: premios.toFixed(2),
+      utilidadNeta: (recaudado - premios).toFixed(2),
+      totalTickets,
+    }
+  })
+
+  return {
+    code: 200,
+    sorteos: sorteosData,
+    totalItems: count,
+    totalPages: Math.ceil(count / limit),
+    currentPage: page,
   }
 }
 
