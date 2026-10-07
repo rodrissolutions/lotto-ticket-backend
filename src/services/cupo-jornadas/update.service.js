@@ -17,10 +17,10 @@ export const actualizarCupo = async (id, cupoMaximo) => {
       jornada,
       CatalogoId,
       CifraId,
+      estado: "Abierto"
     },
   });
 
-  console.log("Sorteo: ",sorteo);
 
   if (sorteo) {
     const ticket = await Tickets.findAll({
