@@ -11,7 +11,7 @@ export const actualizarCupo = async (id, cupoMaximo) => {
   }
 
   const { jornada, CatalogoId, CifraId } = cupoJornada;
-  console.log(jornada, CatalogoId, CifraId);
+
   const sorteo = await Sorteos.findOne({
     where: {
       jornada,
@@ -20,6 +20,8 @@ export const actualizarCupo = async (id, cupoMaximo) => {
     },
   });
 
+  console.log("Sorteo: ",sorteo);
+
   if (sorteo) {
     const ticket = await Tickets.findAll({
       where: {
@@ -27,7 +29,7 @@ export const actualizarCupo = async (id, cupoMaximo) => {
       },
     });
 
-    console.log("Tickets: ", ticket);
+    console.log("Tickets: ", ticket.length);
 
     if (ticket.length > 0) {
       return {
