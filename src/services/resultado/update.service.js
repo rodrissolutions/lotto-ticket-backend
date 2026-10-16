@@ -28,7 +28,7 @@ export const actualizarResultados = async (data) => {
       include: [{ model: Tickets, where: { SorteoId, estado: 'Pagado' } }],
       transaction: t,
     })
-    if (hayPagos > 0) throw new Error('No se puede editar: existen tickets pagados.')
+    //if (hayPagos > 0) throw new Error('No se puede editar: existen tickets pagados.')
 
     // 2. Limpieza (Reversión)
     const resExistente = await Resultados.findOne({ where: { SorteoId }, transaction: t })
