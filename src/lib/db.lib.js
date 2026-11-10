@@ -2,7 +2,16 @@ import { Sequelize } from 'sequelize'
 import { libsConfig } from '../config/index.config.js'
 import { models } from '../models/index.models.js'
 
-const sq = new Sequelize(libsConfig.DATABASE_CONFIG.URI, libsConfig.DATABASE_CONFIG.OPTIONS)
+const sq = new Sequelize(libsConfig.DATABASE_CONFIG.URI, {
+  ...libsConfig.DATABASE_CONFIG.OPTIONS,
+  logging: console.log, // Útil temporalmente para ver la query exacta que falla en Render logs
+  pool: {
+    max: 5,         // Límite de conexiones simultáneas acorde al plan de Render
+    min: 0,
+    acquire: 60000, // Aumentar a 60 segundos el tiempo de espera si la BD está bajo carga
+    idle: 10000
+  }
+});
 
 models.forEach((m) => m(sq))
 
