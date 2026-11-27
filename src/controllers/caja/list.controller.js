@@ -2,7 +2,7 @@ import { cajaServices } from "../../services/index.services.js";
 
 const listarTodas = async (req, res) => {
   try {
-    const { code, cajas } = await cajaServices.listarTodas();
+    const { code, cajas } = await cajaServices.listarTodas(req.user);
     res.status(code).json({ cajas });
   } catch (error) {
     const msg =
@@ -22,12 +22,16 @@ const listarPorPuntoDeVenta = async (req, res) => {
     const { fechaInicio, fechaFin, page, limit } = req.query;
 
     // Llamamos al servicio pasando el ID y las opciones
-    const result = await cajaServices.listarPorPuntoDeVenta(id, {
-      fechaInicio,
-      fechaFin,
-      page,
-      limit,
-    });
+    const result = await cajaServices.listarPorPuntoDeVenta(
+      id,
+      {
+        fechaInicio,
+        fechaFin,
+        page,
+        limit,
+      },
+      req.user,
+    );
 
     const { code, cajas, pagination, resumenGlobal, message } = result;
 
@@ -50,7 +54,10 @@ const listarPorPuntoDeVenta = async (req, res) => {
 const obtenerCajaAbierta = async (req, res) => {
   try {
     const { id } = req.params;
-    const { code, message, caja } = await cajaServices.obtenerCajaAbierta(id);
+    const { code, message, caja } = await cajaServices.obtenerCajaAbierta(
+      id,
+      req.user,
+    );
     res.status(code).json(caja ? { caja } : { message });
   } catch (error) {
     console.log(error);
@@ -66,7 +73,7 @@ const obtenerCajaAbierta = async (req, res) => {
 
 const obtenerCajasAbiertas = async (req, res) => {
   try {
-    const { code, cajas } = await cajaServices.obtenerCajasAbiertas();
+    const { code, cajas } = await cajaServices.obtenerCajasAbiertas(req.user);
     res.status(code).json({ cajas });
   } catch (error) {
     const msg =

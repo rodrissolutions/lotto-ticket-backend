@@ -7,34 +7,44 @@ import {
   Tickets,
   Usuarios,
 } from "../../lib/db.lib.js";
+import { scopeUtils } from "../../utils/index.utils.js";
 
-const obtenerCajasAbiertas = async () => {
+const obtenerCajasAbiertas = async (usuario = null) => {
+  const alcance = usuario ? scopeUtils.resolverAlcanceUsuario(usuario) : null;
+  const where = { estado: "Abierta" };
+
+  if (alcance?.esAdminPuntoVenta && alcance.puntoVentaIdEfectivo) {
+    where.PuntoVentaId = alcance.puntoVentaIdEfectivo;
+  }
+
   const cajas = await Cajas.findAll({
-    where: {
-      estado: "Abierta",
-    },
+    where,
     order: [["createdAt", "DESC"]],
   });
 
   return { code: 200, cajas };
 };
 
+const obtenerCajaAbierta = async (PuntoVentaId, usuario = null) => {
+  const alcance = usuario
+    ? scopeUtils.resolverAlcanceUsuario(usuario, PuntoVentaId)
+    : null;
+  const pvEfectivo = alcance?.esAdminPuntoVenta
+    ? alcance.puntoVentaIdEfectivo
+    : PuntoVentaId;
 
-
-const obtenerCajaAbierta = async (PuntoVentaId) => {
-  const puntoVenta = await PuntosVenta.findByPk(PuntoVentaId);
+  const puntoVenta = await PuntosVenta.findByPk(pvEfectivo);
   if (!puntoVenta)
     return { code: 400, message: "No se encontró el punto de venta indicado" };
 
   const caja = await Cajas.findOne({
     where: {
-      PuntoVentaId,
+      PuntoVentaId: pvEfectivo,
       estado: "Abierta",
     },
     attributes: {
       include: [
         [
-          // Contamos los movimientos directamente en la base de datos
           sq.literal(`(
             SELECT COUNT(*)
             FROM "Movimientos" AS m
@@ -49,7 +59,6 @@ const obtenerCajaAbierta = async (PuntoVentaId) => {
         model: Usuarios,
         attributes: ["id", "nombresCompletos", "PuntoVentaId"],
       },
-      // HE ELIMINADO EL INCLUDE DE MOVIMIENTOS AQUI para evitar el error de cuota
     ],
     order: [["createdAt", "DESC"]],
   });
@@ -57,8 +66,16 @@ const obtenerCajaAbierta = async (PuntoVentaId) => {
   return { code: 200, caja };
 };
 
-const listarTodas = async () => {
+const listarTodas = async (usuario = null) => {
+  const alcance = usuario ? scopeUtils.resolverAlcanceUsuario(usuario) : null;
+  const where = {};
+
+  if (alcance?.esAdminPuntoVenta && alcance.puntoVentaIdEfectivo) {
+    where.PuntoVentaId = alcance.puntoVentaIdEfectivo;
+  }
+
   const cajas = await Cajas.findAll({
+    where,
     include: [
       {
         model: Movimientos,
@@ -77,8 +94,15 @@ const listarTodas = async () => {
   return { code: 200, cajas };
 };
 
-const listarPorPuntoDeVenta = async (id, options = {}) => {
+const listarPorPuntoDeVenta = async (id, options = {}, usuario = null) => {
   try {
+    const alcance = usuario
+      ? scopeUtils.resolverAlcanceUsuario(usuario, id)
+      : null;
+    const pvEfectivo = alcance?.esAdminPuntoVenta
+      ? alcance.puntoVentaIdEfectivo
+      : id;
+
     const { fechaInicio, fechaFin, page = 1, limit = 10 } = options;
     const offset = (page - 1) * parseInt(limit);
 
@@ -91,24 +115,20 @@ const listarPorPuntoDeVenta = async (id, options = {}) => {
       fechaFiltro.fechaApertura = { [Op.gte]: new Date(fechaInicio) };
     }
 
-    // A. Contar cajas SIN el include (así cuenta solo las cajas, no los movimientos)
     const totalCajas = await Cajas.count({
-      where: { PuntoVentaId: id, ...fechaFiltro },
+      where: { PuntoVentaId: pvEfectivo, ...fechaFiltro },
     });
 
-    // B. Traer las cajas con los movimientos (solo las de la página actual)
     const cajas = await Cajas.findAll({
-      where: { PuntoVentaId: id, ...fechaFiltro },
+      where: { PuntoVentaId: pvEfectivo, ...fechaFiltro },
       include: [{ model: Movimientos }],
       order: [["fechaApertura", "DESC"]],
       limit: parseInt(limit),
       offset: parseInt(offset),
     });
 
-    // C. Calcular totales globales (sumando solo lo que pertenece a este punto)
-    // Buscamos todas las cajas del punto para sacar los IDs
     const todasLasCajas = await Cajas.findAll({
-      where: { PuntoVentaId: id },
+      where: { PuntoVentaId: pvEfectivo },
       attributes: ["id"],
     });
     const cajaIds = todasLasCajas.map((c) => c.id);
@@ -125,10 +145,13 @@ const listarPorPuntoDeVenta = async (id, options = {}) => {
 
     const totalDeudaGeneral =
       (await Tickets.sum("montoTotalPremio", {
-        where: { PuntoVentaId: id, estado: "Pendiente", resultado: "Ganador" },
+        where: {
+          PuntoVentaId: pvEfectivo,
+          estado: "Pendiente",
+          resultado: "Ganador",
+        },
       })) || 0;
 
-    // Procesar cajas
     const cajasProcesadas = cajas.map((caja) => {
       const c = caja.toJSON();
       const v = c.Movimientos.filter(
@@ -147,7 +170,7 @@ const listarPorPuntoDeVenta = async (id, options = {}) => {
       code: 200,
       cajas: cajasProcesadas,
       pagination: {
-        totalItems: totalCajas, // Ahora sí será 4
+        totalItems: totalCajas,
         totalPages: Math.ceil(totalCajas / limit),
         currentPage: parseInt(page),
       },
@@ -162,6 +185,7 @@ const listarPorPuntoDeVenta = async (id, options = {}) => {
     return { code: 500, message: error.message };
   }
 };
+
 export {
   listarPorPuntoDeVenta,
   listarTodas,

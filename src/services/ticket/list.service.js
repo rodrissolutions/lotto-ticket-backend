@@ -1,4 +1,4 @@
-import { Op } from 'sequelize'
+import { Op } from "sequelize";
 import {
   Catalogos,
   Cifras,
@@ -11,80 +11,81 @@ import {
   Suertes,
   Tickets,
   Usuarios,
-} from '../../lib/db.lib.js'
+} from "../../lib/db.lib.js";
+import { scopeUtils } from "../../utils/index.utils.js";
 
 const listarTickets = async (queryParams = {}) => {
   try {
-    const page = parseInt(queryParams.page, 10) || 1
-    const limit = parseInt(queryParams.limit, 10) || 8
-    const offset = (page - 1) * limit
+    const page = parseInt(queryParams.page, 10) || 1;
+    const limit = parseInt(queryParams.limit, 10) || 8;
+    const offset = (page - 1) * limit;
 
     const { PuntoVentaId, estadoLiquidacion, codigo, fechaInicio, fechaFin } =
-      queryParams
+      queryParams;
 
-    const whereTicket = {}
+    const whereTicket = {};
     if (codigo) {
-      whereTicket.codigo = { [Op.iLike]: `%${codigo}%` }
+      whereTicket.codigo = { [Op.iLike]: `%${codigo}%` };
     }
-    if (PuntoVentaId && PuntoVentaId !== 'Todos') {
-      whereTicket.PuntoVentaId = PuntoVentaId
+    if (PuntoVentaId && PuntoVentaId !== "Todos") {
+      whereTicket.PuntoVentaId = PuntoVentaId;
     }
 
-    if (estadoLiquidacion && estadoLiquidacion !== 'Todos') {
-      if (estadoLiquidacion === 'Ganador_Pendiente') {
-        whereTicket.resultado = 'Ganador'
-        whereTicket.estado = 'Pendiente'
-      } else if (estadoLiquidacion === 'Ganador_Pagado') {
-        whereTicket.resultado = 'Ganador'
-        whereTicket.estado = 'Pagado'
+    if (estadoLiquidacion && estadoLiquidacion !== "Todos") {
+      if (estadoLiquidacion === "Ganador_Pendiente") {
+        whereTicket.resultado = "Ganador";
+        whereTicket.estado = "Pendiente";
+      } else if (estadoLiquidacion === "Ganador_Pagado") {
+        whereTicket.resultado = "Ganador";
+        whereTicket.estado = "Pagado";
       } else if (
-        estadoLiquidacion === 'Pendiente' ||
-        estadoLiquidacion === 'No Ganador'
+        estadoLiquidacion === "Pendiente" ||
+        estadoLiquidacion === "No Ganador"
       ) {
-        whereTicket.resultado = estadoLiquidacion
+        whereTicket.resultado = estadoLiquidacion;
       }
     }
 
     if (fechaInicio && fechaFin) {
       whereTicket.createdAt = {
         [Op.between]: [new Date(fechaInicio), new Date(fechaFin)],
-      }
+      };
     } else if (fechaInicio) {
       whereTicket.createdAt = {
         [Op.gte]: new Date(fechaInicio),
-      }
+      };
     } else if (fechaFin) {
       whereTicket.createdAt = {
         [Op.lte]: new Date(fechaFin),
-      }
+      };
     }
 
     const { count, rows } = await Tickets.findAndCountAll({
       where: whereTicket,
       attributes: [
-        'id',
-        'codigo',
-        'estado',
-        'resultado',
-        'montoTotalPremio',
-        'createdAt',
-        'PuntoVentaId',
+        "id",
+        "codigo",
+        "estado",
+        "resultado",
+        "montoTotalPremio",
+        "createdAt",
+        "PuntoVentaId",
       ],
       include: [
         {
           model: Sorteos,
           attributes: [
-            'id',
-            'numero',
-            'jornada',
-            'fechaSorteo',
-            'horaSorteo',
-            'CatalogoId',
-            'CifraId',
+            "id",
+            "numero",
+            "jornada",
+            "fechaSorteo",
+            "horaSorteo",
+            "CatalogoId",
+            "CifraId",
           ],
           include: [
-            { model: Catalogos, attributes: ['id', 'nombre', 'pais'] },
-            { model: Cifras, attributes: ['id', 'cantidad'] },
+            { model: Catalogos, attributes: ["id", "nombre", "pais"] },
+            { model: Cifras, attributes: ["id", "cantidad"] },
             /*{
               model: Resultados,
               attributes: ['id'],
@@ -104,18 +105,18 @@ const listarTickets = async (queryParams = {}) => {
             },*/
           ],
         },
-        { model: PuntosVenta, attributes: ['id', 'nombre'] },
-        { model: Usuarios, attributes: ['id', 'nombresCompletos'] },
+        { model: PuntosVenta, attributes: ["id", "nombre"] },
+        { model: Usuarios, attributes: ["id", "nombresCompletos"] },
         {
           model: DetallesTicket,
-          attributes: ['id', 'numeroJugado', 'montoApostado', 'TicketId'],
+          attributes: ["id", "numeroJugado", "montoApostado", "TicketId"],
         },
       ],
-      order: [['createdAt', 'DESC']],
+      order: [["createdAt", "DESC"]],
       limit: limit,
       offset: offset,
       distinct: true,
-    })
+    });
 
     return {
       code: 200,
@@ -125,18 +126,18 @@ const listarTickets = async (queryParams = {}) => {
         totalPages: Math.ceil(count / limit),
         currentPage: page,
       },
-    }
+    };
   } catch (error) {
-    console.error('[BACKEND ERROR - listarTickets]:', error)
-    return { code: 500, message: error.message }
+    console.error("[BACKEND ERROR - listarTickets]:", error);
+    return { code: 500, message: error.message };
   }
-}
+};
 
 const listarPorPuntoDeVenta = async (id, queryParams = {}) => {
   try {
-    const puntoVenta = await PuntosVenta.findByPk(id)
+    const puntoVenta = await PuntosVenta.findByPk(id);
     if (!puntoVenta)
-      return { code: 400, message: 'Punto de venta no encontrado' }
+      return { code: 400, message: "Punto de venta no encontrado" };
 
     const {
       page = 1,
@@ -145,27 +146,27 @@ const listarPorPuntoDeVenta = async (id, queryParams = {}) => {
       estado,
       fechaInicio,
       fechaFin,
-    } = queryParams
-    const offset = (page - 1) * limit
+    } = queryParams;
+    const offset = (page - 1) * limit;
 
     // 1. Construcción dinámica del WHERE
-    const whereConditions = { PuntoVentaId: id }
+    const whereConditions = { PuntoVentaId: id };
 
-    console.log(codigo)
+    console.log(codigo);
 
     if (codigo) {
-      whereConditions.codigo = { [Op.iLike]: `%${codigo}%` }
+      whereConditions.codigo = { [Op.iLike]: `%${codigo}%` };
     }
 
-    if (estado && estado !== 'Todos') {
-      if (estado === 'Ganador_Pendiente') {
-        whereConditions.resultado = 'Ganador'
-        whereConditions.estado = 'Pendiente'
-      } else if (estado === 'Ganador_Pagado') {
-        whereConditions.resultado = 'Ganador'
-        whereConditions.estado = 'Pagado'
-      } else if (estado === 'Pendiente' || estado === 'No Ganador') {
-        whereConditions.resultado = estado
+    if (estado && estado !== "Todos") {
+      if (estado === "Ganador_Pendiente") {
+        whereConditions.resultado = "Ganador";
+        whereConditions.estado = "Pendiente";
+      } else if (estado === "Ganador_Pagado") {
+        whereConditions.resultado = "Ganador";
+        whereConditions.estado = "Pagado";
+      } else if (estado === "Pendiente" || estado === "No Ganador") {
+        whereConditions.resultado = estado;
       }
     }
 
@@ -173,11 +174,11 @@ const listarPorPuntoDeVenta = async (id, queryParams = {}) => {
     if (fechaInicio && fechaFin) {
       whereConditions.createdAt = {
         [Op.between]: [new Date(fechaInicio), new Date(fechaFin)],
-      }
+      };
     } else if (fechaInicio) {
-      whereConditions.createdAt = { [Op.gte]: new Date(fechaInicio) }
+      whereConditions.createdAt = { [Op.gte]: new Date(fechaInicio) };
     } else if (fechaFin) {
-      whereConditions.createdAt = { [Op.lte]: new Date(fechaFin) }
+      whereConditions.createdAt = { [Op.lte]: new Date(fechaFin) };
     }
 
     // 2. Consulta a la base de datos
@@ -215,11 +216,11 @@ const listarPorPuntoDeVenta = async (id, queryParams = {}) => {
         { model: Usuarios },
         { model: DetallesTicket },
       ],
-      order: [['createdAt', 'DESC']],
+      order: [["createdAt", "DESC"]],
       limit: parseInt(limit, 10),
       offset: offset,
       distinct: true,
-    })
+    });
 
     return {
       code: 200,
@@ -229,10 +230,30 @@ const listarPorPuntoDeVenta = async (id, queryParams = {}) => {
         totalPages: Math.ceil(count / limit),
         currentPage: parseInt(page, 10),
       },
-    }
+    };
   } catch (error) {
-    console.error('[BACKEND ERROR - listarPorPuntoDeVenta]:', error)
-    return { code: 500, message: error.message }
+    console.error("[BACKEND ERROR - listarPorPuntoDeVenta]:", error);
+    return { code: 500, message: error.message };
   }
-}
-export { listarPorPuntoDeVenta, listarTickets }
+};
+
+const listarTicketsPorUsuario = async (usuario, queryParams = {}) => {
+  const alcance = scopeUtils.resolverAlcanceUsuario(
+    usuario,
+    queryParams.PuntoVentaId,
+  );
+
+  if (alcance.esAdminGeneral) {
+    return await listarTickets(queryParams);
+  }
+
+  if (!alcance.puntoVentaIdEfectivo) {
+    return {
+      code: 400,
+      message: "El usuario no tiene un punto de venta asignado",
+    };
+  }
+
+  return await listarPorPuntoDeVenta(alcance.puntoVentaIdEfectivo, queryParams);
+};
+export { listarPorPuntoDeVenta, listarTickets, listarTicketsPorUsuario };
