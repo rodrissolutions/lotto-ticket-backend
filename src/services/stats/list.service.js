@@ -9,6 +9,7 @@ import {
   Tickets,
   Usuarios,
 } from "../../lib/db.lib.js";
+import { scopeUtils } from "../../utils/index.utils.js";
 
 const getGlobalStats = async () => {
   try {
@@ -152,23 +153,28 @@ const getVendedorStats = async (puntoVentaId) => {
 
 const parseNum = (val) => Number(val) || 0;
 
-const getReporteFinanciero = async (filtros) => {
+const getReporteFinanciero = async (filtros, usuario = null) => {
   try {
     const { fechaInicio, fechaFin, puntoVentaId } = filtros;
+
+    // 1. RESOLVER ALCANCE DEL PUNTO DE VENTA (Aquí va)
+    const alcance = usuario
+      ? scopeUtils.resolverAlcanceUsuario(usuario, puntoVentaId)
+      : null;
+
+    const pvEfectivo = alcance
+      ? alcance.puntoVentaIdEfectivo
+      : puntoVentaId && puntoVentaId !== "Todos"
+        ? puntoVentaId
+        : null;
 
     // Validación y formateo de fechas para asegurar el rango 00:00:00 a 23:59:59
     const start = `${fechaInicio} 00:00:00`;
     const end = `${fechaFin} 23:59:59`;
 
-    // Condiciones base de filtrado por punto de venta
-    const pvFiltroTicket =
-      puntoVentaId && puntoVentaId !== "Todos"
-        ? { PuntoVentaId: puntoVentaId }
-        : {};
-    const pvFiltroMov =
-      puntoVentaId && puntoVentaId !== "Todos"
-        ? { PuntoVentaId: puntoVentaId }
-        : {};
+    // 2. USAR pvEfectivo EN LUGAR DE puntoVentaId
+    const pvFiltroTicket = pvEfectivo ? { PuntoVentaId: pvEfectivo } : {};
+    const pvFiltroMov = pvEfectivo ? { PuntoVentaId: pvEfectivo } : {};
 
     // 1. OBTENER VENTAS REALES
     const ventasQuery = await Tickets.findAll({
@@ -307,4 +313,57 @@ const getReporteFinanciero = async (filtros) => {
   }
 };
 
-export { getGlobalStats, getReporteFinanciero, getVendedorStats };
+const getStatsByUsuario = async (usuario, puntoVentaIdQuery = null) => {
+  const alcance = scopeUtils.resolverAlcanceUsuario(usuario, puntoVentaIdQuery);
+
+  if (alcance.esAdminGeneral && !alcance.puntoVentaIdEfectivo) {
+    return await getGlobalStats();
+  }
+
+  const pvId = alcance.puntoVentaIdEfectivo;
+  const baseStats = await getVendedorStats(pvId);
+
+  const hoy = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guayaquil",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  const [
+    cajasAbiertas,
+    totalGanadores,
+    totalUsuarios,
+    totalSorteosActivos,
+    totalCatalogos,
+  ] = await Promise.all([
+    Cajas.count({ where: { estado: "Abierta", PuntoVentaId: pvId } }),
+    Tickets.count({ where: { resultado: "Ganador", PuntoVentaId: pvId } }),
+    Usuarios.count({ where: { PuntoVentaId: pvId } }),
+    Sorteos.count({ where: { estado: "Abierto" } }),
+    Catalogos ? Catalogos.count() : Promise.resolve(0),
+  ]);
+
+  return {
+    code: 200,
+    scope: alcance.esAdminPuntoVenta ? "PUNTO_VENTA" : "VENDEDOR",
+    puntoVentaId: pvId,
+    stats: {
+      ...baseStats.stats,
+      deudaPremios: baseStats.stats.premiosPendientes,
+      cajasAbiertas,
+      totalGanadores,
+      totalUsuarios,
+      totalSorteosActivos,
+      totalCatalogos: totalCatalogos || 0,
+      fecha: hoy,
+    },
+  };
+};
+
+export {
+  getGlobalStats,
+  getReporteFinanciero,
+  getVendedorStats,
+  getStatsByUsuario,
+};

@@ -1,11 +1,17 @@
-import { Router } from 'express'
-import { statsControllers } from '../../controllers/index.controllers.js'
+import { Router } from "express";
+import { statsControllers } from "../../controllers/index.controllers.js";
+import { jwtMiddlewares } from "../../middlewares/index.middlewares.js";
 
-const statsRouter = Router()
+const statsRouter = Router();
 
-statsRouter.get('/listar/', statsControllers.getDashboardStats)
-statsRouter.get('/listar/punto-venta/:id', statsControllers.getVendedorDashboardStats)
+statsRouter.use(jwtMiddlewares.verificarToken);
 
-statsRouter.get('/reporte-financiero/', statsControllers.getReportStats)
+statsRouter.get("/listar/", statsControllers.getDashboardStats);
+statsRouter.get(
+  "/listar/punto-venta/:id",
+  statsControllers.getVendedorDashboardStats,
+);
 
-export default statsRouter
+statsRouter.get("/reporte-financiero/", statsControllers.getReportStats);
+
+export default statsRouter;
